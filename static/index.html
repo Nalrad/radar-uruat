@@ -1,75 +1,57 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8">
   <title>Radar Amazônico</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    #map { height: 100vh; }
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    // Inicializa o mapa centrado na Amazônia
+    const map = L.map('map').setView([-3.119, -60.0217], 6);
 
-<script>
-  const map = L.map('map').setView([-3.13, -60.02], 10);
+    // Adiciona camada de tiles (mapa base)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+    // Dicionário de marcadores
+    const markers = {};
 
-  const barcoIcone = L.icon({
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/727/727606.png',
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-  });
+    // Função para atualizar embarcações
+    async function atualizarEmbarcacoes() {
+      try {
+        const resp = await fetch('/embarcacoes');
+        const embarcacoes = await resp.json();
 
-  let marcadores = [];
+        embarcacoes.forEach(emb => {
+          if (markers[emb.id]) {
+            // Atualiza posição existente
+            markers[emb.id].setLatLng([emb.latitude, emb.longitude]);
+          } else {
+            // Cria novo marcador
+            markers[emb.id] = L.marker([emb.latitude, emb.longitude])
+              .addTo(map)
+              .bindPopup(`<b>${emb.nome}</b><br>${emb.tipo}`);
+          }
+        });
+      } catch (err) {
+        console.error("Erro ao buscar embarcações:", err);
+      }
+    }
 
-  async function carregarEmbarcacoes() {
-    // Remove marcadores antigos
-    marcadores.forEach(m => map.removeLayer(m));
-    marcadores = [];
-
-    const resposta = await fetch('/embarcacoes');
-    const embarcacoes = await resposta.json();
-
-    embarcacoes.forEach(e => {
-      const marcador = L.marker([e.latitude, e.longitude], { icon: barcoIcone })
-        .addTo(map)
-        .bindPopup(`
-          <b>${e.nome}</b><br>
-          Tipo: ${e.tipo}<br>
-          Velocidade: ${e.velocidade} nós<br>
-          Bandeira: ${e.bandeira}<br>
-          ID: ${e.id}
-        `);
-
-      marcadores.push(marcador);
-    });
-  }
-
-  async function simularMovimento() {
-    await fetch('/simular-movimento', { method: 'POST' });
-  }
-
-  async function atualizarMapa() {
-    await simularMovimento();
-    await carregarEmbarcacoes();
-  }
-
-  // Inicial
-  carregarEmbarcacoes();
-
-  // Atualiza a cada 5 segundos
-  setInterval(atualizarMapa, 5000);
-</script>
-</script>
+    // Atualiza a cada 5s
+    setInterval(atualizarEmbarcacoes, 5000);
+    atualizarEmbarcacoes();
+  </script>
 </body>
 </html>

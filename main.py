@@ -4,6 +4,10 @@ from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 import asyncio
 import random
+from fastapi.staticfiles import StaticFiles
+
+# Servir arquivos estáticos
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 app = FastAPI()
 

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Radar Amazônico</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  const map = L.map('map').setView([-3.13, -60.02], 10);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const barcoIcone = L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/727/727606.png',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -32]
+  });
+
+  let marcadores = [];
+
+  async function carregarEmbarcacoes() {
+    // Remove marcadores antigos
+    marcadores.forEach(m => map.removeLayer(m));
+    marcadores = [];
+
+    const resposta = await fetch('/embarcacoes');
+    const embarcacoes = await resposta.json();
+
+    embarcacoes.forEach(e => {
+      const marcador = L.marker([e.latitude, e.longitude], { icon: barcoIcone })
+        .addTo(map)
+        .bindPopup(`
+          <b>${e.nome}</b><br>
+          Tipo: ${e.tipo}<br>
+          Velocidade: ${e.velocidade} nós<br>
+          Bandeira: ${e.bandeira}<br>
+          ID: ${e.id}
+        `);
+
+      marcadores.push(marcador);
+    });
+  }
+
+  async function simularMovimento() {
+    await fetch('/simular-movimento', { method: 'POST' });
+  }
+
+  async function atualizarMapa() {
+    await simularMovimento();
+    await carregarEmbarcacoes();
+  }
+
+  // Inicial
+  carregarEmbarcacoes();
+
+  // Atualiza a cada 5 segundos
+  setInterval(atualizarMapa, 5000);
+</script>
+</script>
+</body>
+</html>

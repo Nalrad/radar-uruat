@@ -7,9 +7,10 @@ import random
 from fastapi.staticfiles import StaticFiles
 
 # Servir arquivos estáticos
+app = FastAPI()
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
-app = FastAPI()
 
 # Modelo de dados
 class Embarcacao(BaseModel):
@@ -55,3 +56,4 @@ def simular_movimento_manual():
         embarcacao.latitude += random.uniform(-0.001, 0.001)
         embarcacao.longitude += random.uniform(-0.001, 0.001)
     return {"status": "Movimento simulado manualmente"}
+

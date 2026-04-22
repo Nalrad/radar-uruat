@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>URUÁ-T</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map {
+      height: 90vh;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center; margin:10px;">
+    URUÁ-T: Monitoramento de Embarcações em Oriximiná
+  </h2>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Inicializa o mapa centrado na Amazônia
+    const map = L.map('map').setView([-1.77, -55.86], 10);
+
+    // Adiciona camada de tiles (mapa base)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Dicionário de marcadores
+    const markers = {};
+
+    // Função para atualizar embarcações
+    async function atualizarEmbarcacoes() {
+      try {
+        const resp = await fetch('http://127.0.0.1:8000/embarcacoes');
+        const embarcacoes = await resp.json();
+
+        embarcacoes.forEach(emb => {
+	  if (!markers[emb.id]) {
+	    const conteudo = `
+	      <b>${emb.nome}</b><br>
+	      Tipo: ${emb.tipo}<br>
+	      Velocidade: ${emb.velocidade} nós<br>
+	      Bandeira: ${emb.bandeira}
+	    `;
+
+	    markers[emb.id] = L.marker([emb.latitude, emb.longitude])
+	      .addTo(map)
+	      .bindPopup(conteudo);
+	  } else {
+	    markers[emb.id].setLatLng([emb.latitude, emb.longitude]);
+	  }
+	});
+            
+      } catch (err) {
+        console.error("Erro ao buscar embarcações:", err);
+      }
+    }
+
+    // Atualiza a cada 5s
+    setInterval(atualizarEmbarcacoes, 5000);
+    atualizarEmbarcacoes();
+  </script>
+</body>
+</html>

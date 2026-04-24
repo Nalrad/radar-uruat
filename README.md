@@ -23,7 +23,7 @@ A proposta do sistema é permitir o acompanhamento de embarcações em um mapa i
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/Nalrad/radar-amazonico
+git clone https://github.com/Nalrad/radar-uruat
 
 cd backend
 source ../venv/bin/activate

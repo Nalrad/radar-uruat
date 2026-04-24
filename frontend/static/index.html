@@ -1,66 +1,530 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>URUÁ-T</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="URUÁ-T: Sistema de monitoramento de embarcações fluviais em tempo real na Amazônia — Oriximiná (PA)." />
+  <title>URUÁ-T · Monitoramento de Embarcações</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
-    #map {
-      height: 90vh;
-      width: 100%;
+    /* ── RESET & BASE ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0b0f1a;
+      --surface:  #111827;
+      --surface2: #1c2539;
+      --border:   #1f2d45;
+      --accent:   #3b82f6;
+      --accent2:  #06b6d4;
+      --success:  #22c55e;
+      --warning:  #f59e0b;
+      --danger:   #ef4444;
+      --text:     #f0f4ff;
+      --muted:    #6b7fa3;
+      --sidebar-w: 300px;
+      --nav-h:     58px;
+    }
+
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+
+    /* ── NAVBAR ─────────────────────────────────────────── */
+    #navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      height: var(--nav-h);
+      background: rgba(11,15,26,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; gap: 12px;
+    }
+
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .nav-logo {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .nav-title { font-size: 1rem; font-weight: 700; letter-spacing: .5px; }
+    .nav-subtitle { font-size: .7rem; color: var(--muted); }
+
+    /* live badge */
+    #live-badge {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 12px; font-size: .75rem;
+    }
+    .pulse-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 0 rgba(34,197,94,.6);
+      animation: pulse 2s infinite;
+    }
+    .pulse-dot.error { background: var(--danger); box-shadow: 0 0 0 0 rgba(239,68,68,.6); }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.6); }
+      70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    #countdown { color: var(--muted); }
+
+    /* nav right */
+    .nav-right { display: flex; align-items: center; gap: 10px; }
+    #vessel-count {
+      font-size: .75rem; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 20px;
+      padding: 4px 12px; color: var(--muted);
+    }
+    #vessel-count span { color: var(--accent); font-weight: 600; }
+
+    /* hamburger */
+    #menu-btn {
+      display: none; background: none; border: none; cursor: pointer;
+      color: var(--text); font-size: 1.3rem; padding: 4px;
+    }
+
+    /* ── LAYOUT ─────────────────────────────────────────── */
+    #layout {
+      display: flex;
+      height: 100vh;
+      padding-top: var(--nav-h);
+    }
+
+    /* ── SIDEBAR ─────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: transform .3s ease;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-title {
+      font-size: .8rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    /* Filtros */
+    #filters {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .filter-btn {
+      font-family: 'Inter', sans-serif;
+      font-size: .72rem; font-weight: 500;
+      padding: 4px 10px; border-radius: 20px; cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent; color: var(--muted);
+      transition: all .2s;
+    }
+    .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Lista */
+    #vessel-list {
+      flex: 1; overflow-y: auto; padding: 10px;
+    }
+    #vessel-list::-webkit-scrollbar { width: 4px; }
+    #vessel-list::-webkit-scrollbar-track { background: transparent; }
+    #vessel-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .vessel-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px;
+      margin-bottom: 8px; cursor: pointer;
+      transition: all .2s; position: relative; overflow: hidden;
+    }
+    .vessel-card::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; background: var(--accent);
+      border-radius: 3px 0 0 3px;
+    }
+    .vessel-card.turismo::before  { background: #a855f7; }
+    .vessel-card.pesca::before    { background: var(--success); }
+    .vessel-card.carga::before    { background: var(--warning); }
+    .vessel-card:hover { border-color: var(--accent); transform: translateX(2px); }
+    .vessel-card.selected { border-color: var(--accent); background: rgba(59,130,246,.08); }
+
+    .vc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .vc-icon { font-size: 1.2rem; }
+    .vc-name { font-size: .88rem; font-weight: 600; }
+    .vc-tipo { font-size: .68rem; color: var(--muted); margin-left: auto;
+               background: var(--surface); padding: 2px 6px; border-radius: 4px; }
+
+    .vc-data { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .vc-item { font-size: .72rem; color: var(--muted); }
+    .vc-item span { color: var(--text); font-weight: 500; }
+
+    .vc-coords {
+      margin-top: 6px; font-size: .67rem; color: var(--muted);
+      font-family: monospace; letter-spacing: .3px;
+    }
+
+    /* ── MAP ─────────────────────────────────────────────── */
+    #map { flex: 1; z-index: 1; }
+
+    /* Leaflet dark override */
+    .leaflet-tile { filter: brightness(.85) saturate(.8) hue-rotate(200deg); }
+    .leaflet-container { background: #0b0f1a; }
+    .leaflet-control-attribution { background: rgba(11,15,26,.7) !important; color: #6b7fa3 !important; }
+    .leaflet-control-zoom a { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; }
+
+    /* Custom popup */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.5);
+      color: var(--text); padding: 0;
+    }
+    .leaflet-popup-content { margin: 0; min-width: 180px; }
+    .leaflet-popup-tip { background: var(--surface); }
+
+    .popup-body { padding: 14px; }
+    .popup-name { font-size: .9rem; font-weight: 700; margin-bottom: 8px; }
+    .popup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .popup-item label { display: block; font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .popup-item span  { font-size: .8rem; font-weight: 500; }
+
+    /* ── TOAST ───────────────────────────────────────────── */
+    #toast-container {
+      position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 16px;
+      font-size: .8rem; min-width: 220px;
+      display: flex; align-items: center; gap: 8px;
+      animation: slideIn .3s ease;
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    }
+    .toast.error  { border-color: var(--danger);  }
+    .toast.success { border-color: var(--success); }
+    @keyframes slideIn {
+      from { transform: translateX(120%); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+
+    /* ── RESPONSIVE ──────────────────────────────────────── */
+    @media (max-width: 768px) {
+      :root { --sidebar-w: 260px; }
+      #menu-btn { display: block; }
+      #sidebar {
+        position: fixed; left: 0; top: var(--nav-h); bottom: 0;
+        z-index: 500; transform: translateX(-100%);
+      }
+      #sidebar.open { transform: translateX(0); }
     }
   </style>
 </head>
 <body>
-  <h2 style="text-align:center; margin:10px;">
-    URUÁ-T: Monitoramento de Embarcações em Oriximiná
-  </h2>
-  <div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- NAVBAR -->
+  <nav id="navbar">
+    <div class="nav-brand">
+      <button id="menu-btn" aria-label="Menu">☰</button>
+      <div class="nav-logo">⚓</div>
+      <div>
+        <div class="nav-title">URUÁ-T</div>
+        <div class="nav-subtitle">Oriximiná · Amazônia</div>
+      </div>
+    </div>
+
+    <div id="live-badge">
+      <div class="pulse-dot" id="pulse-dot"></div>
+      <span id="live-label">Ao vivo</span>
+      &nbsp;·&nbsp;
+      <span id="countdown">5s</span>
+    </div>
+
+    <div class="nav-right">
+      <div id="vessel-count">Embarcações: <span id="total-count">—</span></div>
+    </div>
+  </nav>
+
+  <!-- LAYOUT -->
+  <div id="layout">
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">Embarcações</div>
+        <div id="filters">
+          <button class="filter-btn active" data-filter="todos" id="f-todos">Todos</button>
+          <button class="filter-btn" data-filter="Transporte" id="f-transporte">Transporte</button>
+          <button class="filter-btn" data-filter="Turismo" id="f-turismo">Turismo</button>
+          <button class="filter-btn" data-filter="Pesca" id="f-pesca">Pesca</button>
+          <button class="filter-btn" data-filter="Carga" id="f-carga">Carga</button>
+        </div>
+      </div>
+      <div id="vessel-list"></div>
+    </aside>
+
+    <!-- MAP -->
+    <div id="map"></div>
+  </div>
+
+  <!-- TOASTS -->
+  <div id="toast-container"></div>
+
   <script>
-    // Inicializa o mapa centrado na Amazônia
-    const map = L.map('map').setView([-1.77, -55.86], 10);
+    // ── CONFIG ──────────────────────────────────────────────
+    const API_URL      = 'http://127.0.0.1:8000/embarcacoes';
+    const UPDATE_SEC   = 5;
+    const TRAIL_MAX    = 8;
 
-    // Adiciona camada de tiles (mapa base)
+    // ── STATE ───────────────────────────────────────────────
+    let markers       = {};
+    let trails        = {};    // polylines
+    let trailHistory  = {};    // array de [lat,lng]
+    let embarcacoes   = [];
+    let activeFilter  = 'todos';
+    let selectedId    = null;
+    let countdown     = UPDATE_SEC;
+    let apiOk         = true;
+
+    // ── MAP INIT ────────────────────────────────────────────
+    const map = L.map('map', { zoomControl: true }).setView([-1.77, -55.86], 12);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
     }).addTo(map);
 
-    // Dicionário de marcadores
-    const markers = {};
+    // ── ÍCONES ──────────────────────────────────────────────
+    const iconColors = {
+      'Transporte': '#3b82f6',
+      'Turismo':    '#a855f7',
+      'Pesca':      '#22c55e',
+      'Carga':      '#f59e0b',
+      'default':    '#06b6d4'
+    };
+    const iconEmoji = {
+      'Transporte': '🚢',
+      'Turismo':    '⛵',
+      'Pesca':      '🎣',
+      'Carga':      '🛳️',
+      'default':    '⚓'
+    };
 
-    // Função para atualizar embarcações
-    async function atualizarEmbarcacoes() {
-      try {
-        const resp = await fetch('http://127.0.0.1:8000/embarcacoes');
-        const embarcacoes = await resp.json();
+    function makeIcon(tipo, selected = false) {
+      const color = iconColors[tipo] || iconColors.default;
+      const emoji = iconEmoji[tipo]  || iconEmoji.default;
+      const size  = selected ? 44 : 36;
+      const html  = `
+        <div style="
+          width:${size}px;height:${size}px;
+          background:${color};
+          border-radius:50% 50% 50% 0;
+          transform:rotate(-45deg);
+          border: 2px solid rgba(255,255,255,.6);
+          display:flex;align-items:center;justify-content:center;
+          box-shadow: 0 2px 12px rgba(0,0,0,.5);
+          transition: all .2s;
+        ">
+          <span style="transform:rotate(45deg);font-size:${selected?18:14}px">${emoji}</span>
+        </div>`;
+      return L.divIcon({
+        html, className: '',
+        iconSize:   [size, size],
+        iconAnchor: [size/2, size],
+        popupAnchor:[0, -size]
+      });
+    }
 
-        embarcacoes.forEach(emb => {
-	  if (!markers[emb.id]) {
-	    const conteudo = `
-	      <b>${emb.nome}</b><br>
-	      Tipo: ${emb.tipo}<br>
-	      Velocidade: ${emb.velocidade} nós<br>
-	      Bandeira: ${emb.bandeira}
-	    `;
+    // ── POPUP HTML ──────────────────────────────────────────
+    function makePopup(e) {
+      return `
+        <div class="popup-body">
+          <div class="popup-name">${e.nome}</div>
+          <div class="popup-grid">
+            <div class="popup-item"><label>Tipo</label><span>${e.tipo}</span></div>
+            <div class="popup-item"><label>Bandeira</label><span>${e.bandeira}</span></div>
+            <div class="popup-item"><label>Velocidade</label><span>${e.velocidade} nós</span></div>
+            <div class="popup-item"><label>Status</label><span style="color:#22c55e">● Ativo</span></div>
+          </div>
+        </div>`;
+    }
 
-	    markers[emb.id] = L.marker([emb.latitude, emb.longitude])
-	      .addTo(map)
-	      .bindPopup(conteudo);
-	  } else {
-	    markers[emb.id].setLatLng([emb.latitude, emb.longitude]);
-	  }
-	});
-            
-      } catch (err) {
-        console.error("Erro ao buscar embarcações:", err);
+    // ── CARD HTML ───────────────────────────────────────────
+    function tipoClass(tipo) {
+      return (tipo || '').toLowerCase();
+    }
+    function makeCard(e) {
+      const color = iconColors[e.tipo] || iconColors.default;
+      const emoji = iconEmoji[e.tipo]  || iconEmoji.default;
+      const sel   = selectedId === e.id;
+      return `
+        <div class="vessel-card ${tipoClass(e.tipo)} ${sel ? 'selected' : ''}"
+             id="card-${e.id}" onclick="selectVessel(${e.id})">
+          <div class="vc-header">
+            <span class="vc-icon">${emoji}</span>
+            <span class="vc-name">${e.nome}</span>
+            <span class="vc-tipo" style="color:${color}">${e.tipo}</span>
+          </div>
+          <div class="vc-data">
+            <div class="vc-item">Veloc. <span>${e.velocidade} nós</span></div>
+            <div class="vc-item">Bandeira <span>${e.bandeira}</span></div>
+          </div>
+          <div class="vc-coords">${e.latitude.toFixed(5)}, ${e.longitude.toFixed(5)}</div>
+        </div>`;
+    }
+
+    // ── RENDER SIDEBAR ──────────────────────────────────────
+    function renderSidebar() {
+      const filtered = activeFilter === 'todos'
+        ? embarcacoes
+        : embarcacoes.filter(e => e.tipo === activeFilter);
+
+      document.getElementById('vessel-list').innerHTML =
+        filtered.length
+          ? filtered.map(makeCard).join('')
+          : `<p style="color:var(--muted);font-size:.8rem;padding:12px">Nenhuma embarcação nesta categoria.</p>`;
+
+      document.getElementById('total-count').textContent = embarcacoes.length;
+    }
+
+    // ── SELECT VESSEL ───────────────────────────────────────
+    function selectVessel(id) {
+      selectedId = id;
+      const emb = embarcacoes.find(e => e.id === id);
+      if (emb) {
+        map.flyTo([emb.latitude, emb.longitude], 14, { duration: 1 });
+        markers[id]?.openPopup();
+      }
+      renderSidebar();
+      // update icon sizes
+      embarcacoes.forEach(e => {
+        if (markers[e.id]) markers[e.id].setIcon(makeIcon(e.tipo, e.id === id));
+      });
+      // close sidebar on mobile
+      if (window.innerWidth <= 768) {
+        document.getElementById('sidebar').classList.remove('open');
+      }
+    }
+    window.selectVessel = selectVessel;
+
+    // ── TRAIL ───────────────────────────────────────────────
+    function updateTrail(id, lat, lng) {
+      if (!trailHistory[id]) trailHistory[id] = [];
+      trailHistory[id].push([lat, lng]);
+      if (trailHistory[id].length > TRAIL_MAX) trailHistory[id].shift();
+
+      if (trails[id]) map.removeLayer(trails[id]);
+      if (trailHistory[id].length > 1) {
+        const color = iconColors[embarcacoes.find(e=>e.id===id)?.tipo] || '#06b6d4';
+        trails[id] = L.polyline(trailHistory[id], {
+          color, weight: 2, opacity: .5, dashArray: '4 6'
+        }).addTo(map);
       }
     }
 
-    // Atualiza a cada 5s
-    setInterval(atualizarEmbarcacoes, 5000);
-    atualizarEmbarcacoes();
+    // ── FETCH & UPDATE ──────────────────────────────────────
+    async function fetchEmbarcacoes() {
+      try {
+        const resp = await fetch(API_URL);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        embarcacoes = await resp.json();
+
+        embarcacoes.forEach(e => {
+          updateTrail(e.id, e.latitude, e.longitude);
+
+          if (!markers[e.id]) {
+            markers[e.id] = L.marker([e.latitude, e.longitude], {
+              icon: makeIcon(e.tipo, e.id === selectedId)
+            })
+            .addTo(map)
+            .bindPopup(makePopup(e), { maxWidth: 220 })
+            .on('click', () => selectVessel(e.id));
+          } else {
+            markers[e.id].setLatLng([e.latitude, e.longitude]);
+            markers[e.id].setIcon(makeIcon(e.tipo, e.id === selectedId));
+            markers[e.id].setPopupContent(makePopup(e));
+          }
+        });
+
+        if (!apiOk) {
+          apiOk = true;
+          showToast('Conexão restabelecida com o servidor.', 'success');
+          setPulse(true);
+        }
+        renderSidebar();
+      } catch (err) {
+        if (apiOk) {
+          apiOk = false;
+          showToast('Erro ao conectar com a API. Tentando novamente...', 'error');
+          setPulse(false);
+        }
+      }
+    }
+
+    // ── LIVE INDICATOR ──────────────────────────────────────
+    function setPulse(ok) {
+      const dot   = document.getElementById('pulse-dot');
+      const label = document.getElementById('live-label');
+      if (ok) {
+        dot.classList.remove('error');
+        label.textContent = 'Ao vivo';
+      } else {
+        dot.classList.add('error');
+        label.textContent = 'Offline';
+      }
+    }
+
+    setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        countdown = UPDATE_SEC;
+        fetchEmbarcacoes();
+      }
+      document.getElementById('countdown').textContent = countdown + 's';
+    }, 1000);
+
+    // ── FILTERS ─────────────────────────────────────────────
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeFilter = btn.dataset.filter;
+        renderSidebar();
+      });
+    });
+
+    // ── TOAST ───────────────────────────────────────────────
+    function showToast(msg, type = 'info') {
+      const icon = type === 'error' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️';
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    // ── MOBILE MENU ─────────────────────────────────────────
+    document.getElementById('menu-btn').addEventListener('click', () => {
+      document.getElementById('sidebar').classList.toggle('open');
+    });
+
+    // ── INIT ─────────────────────────────────────────────────
+    fetchEmbarcacoes();
   </script>
 </body>
 </html>

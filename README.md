@@ -26,25 +26,57 @@ A proposta do sistema é permitir o acompanhamento de embarcações em um mapa i
 - Interface responsiva para dispositivos móveis
 - Simulação de movimentação das embarcações via backend
 
+## Estrutura do Projeto
+
+```
+urua-t/
+├── backend/            # API FastAPI (Python)
+├── database/           # Scripts SQL (PostgreSQL)
+├── docs/               # Diagramas e documentação
+├── frontend/static/    # Interface do usuário (HTML/CSS/JS)
+├── venv/               # Ambiente virtual Python
+└── README.md
+```
+
+## Banco de Dados
+
+O projeto utiliza um banco de dados relacional (PostgreSQL) para gerenciar as informações de usuários, operadores, embarcações e histórico de localizações.
+
+- **Schema**: Localizado em `database/schema.sql`.
+- **Dados de Teste**: Exemplos de inserção e consultas em `database/seed.sql`.
+- **Modelagem**: O Diagrama de Entidade-Relacionamento (DER) está disponível em `docs/diagrama_ER.png`.
+
 ## Como executar o projeto
 
 1. Clone o repositório:
 ```bash
 git clone https://github.com/Nalrad/radar-uruat
-cd radar-uruat
+cd urua-t
 ```
 
-2. Ative o ambiente virtual e inicie o backend:
+2. Configure o banco de dados (PostgreSQL):
+- Execute o script `database/schema.sql` para criar a estrutura das tabelas.
+- Opcionalmente, use `database/seed.sql` para carregar dados de teste.
+
+3. Ative o ambiente virtual e inicie o backend:
 ```bash
 cd backend
 source ../venv/bin/activate
 uvicorn main:app --reload
 ```
 
-3. Acesse no navegador:
+4. Acesse no navegador:
 ```
 http://127.0.0.1:8000/static/index.html
 ```
+
+## Documentação
+
+Os diagramas do projeto podem ser encontrados na pasta `/docs`:
+- **Diagrama ER**: `docs/diagrama_ER.png`
+- **Casos de Uso**: `docs/diagrama_caso_uso.png`
+- **Diagrama de Classes**: `docs/diagrama_classes.png`
+- **Mapa Conceitual**: `docs/mapa_conceitual.png`
 
 ## Objetivo do projeto
 

@@ -50,22 +50,29 @@ O projeto utiliza um banco de dados relacional (PostgreSQL) para gerenciar as in
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/Nalrad/radar-uruat
+git clone https://github.com/Nalrad/urua-t
 cd urua-t
 ```
 
-2. Configure o banco de dados (PostgreSQL):
+2. Crie o ambiente virtual e instale as dependências:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+3. Configure o banco de dados (Opcional - PostgreSQL):
 - Execute o script `database/schema.sql` para criar a estrutura das tabelas.
 - Opcionalmente, use `database/seed.sql` para carregar dados de teste.
 
-3. Ative o ambiente virtual e inicie o backend:
+4. Inicie o servidor backend:
 ```bash
 cd backend
 source ../venv/bin/activate
 uvicorn main:app --reload
 ```
 
-4. Acesse no navegador:
+5. Acesse no navegador:
 ```
 http://127.0.0.1:8000/static/index.html
 ```

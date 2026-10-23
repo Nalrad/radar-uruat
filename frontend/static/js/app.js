@@ -37,6 +37,24 @@
     }
   }
 
+  // Grade pública (fase 2): raramente muda — atualiza na carga inicial e a
+  // cada minuto; falha é degradante (cards seguem sem a linha comercial).
+  let gradeOk = true;
+  async function buscarGrade() {
+    try {
+      UI.setGrade(await API.listarRotas());
+      if (!gradeOk) {
+        gradeOk = true;
+        UI.showToast('Grade de partidas atualizada.', 'success');
+      }
+    } catch (_) {
+      if (gradeOk) {
+        gradeOk = false;
+        UI.showToast('Grade de partidas indisponível no momento.', 'error');
+      }
+    }
+  }
+
   // Timer de contagem regressiva visível (feedback de "quase tempo real")
   setInterval(() => {
     countdown--;
@@ -55,6 +73,11 @@
   });
 
   UI.bindFilters();
+
+  // Grade pública: carga inicial + renovação lenta (1 min) — dados que
+  // mudam apenas quando o operador edita a grade no backend.
+  buscarGrade();
+  setInterval(buscarGrade, 60_000);
 
   document.getElementById('menu-btn').addEventListener('click', () => {
     const sb = document.getElementById('sidebar');

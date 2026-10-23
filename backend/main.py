@@ -11,8 +11,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import persistencia as db
+from auth import router as auth_router
 from calculo_eta import calcular_distancia, calcular_eta
+from frota import DESTINOS_CONHECIDOS, obter, salvar_passo, semear_banco
 from simulacao import mover_todas
+from viagem import router as viagem_router
 
 # Intervalo de atualização da simulação (segundos) — espelha CONFIG.UPDATE_SEC
 # do frontend; fonte única de verdade no backend.
@@ -43,8 +47,6 @@ class EtaResposta(BaseModel):
     mensagem: Optional[str] = None
 
 
-# Destinos conhecidos para o ETA enquanto a tabela Rota não existe
-# (ver docs/VISAO_PRODUTO.md §4). Depois virá do banco via operador.
 def _nfc(s: str) -> str:
     """Normaliza unicode (NFC): 'O'+acentocombinante == 'Ó'.
 
@@ -54,23 +56,21 @@ def _nfc(s: str) -> str:
     return unicodedata.normalize("NFC", s)
 
 
-DESTINOS_CONHECIDOS = {
-    _nfc("Óbidos"): (-1.9056, -55.5186),
-    _nfc("Oriximiná"): (-1.7656, -55.8661),
-}
-
-# Lista inicial de embarcações
-embarcacoes: List[Embarcacao] = [
-    Embarcacao(id=1, nome="Barco Solimões", tipo="Transporte", velocidade=9.5,
-               bandeira="Brasil", latitude=-1.78, longitude=-55.87),
-    Embarcacao(id=2, nome="Amazon Star", tipo="Turismo", velocidade=6.2,
-               bandeira="Brasil", latitude=-1.76, longitude=-55.85),
-]
+def _de_dict(emb: dict, agora: datetime) -> Embarcacao:
+    """Adaptador SQLite → modelo público (mantém contrato da fase 1)."""
+    return Embarcacao(
+        id=emb["id_embarcacao"], nome=emb["nome"], tipo=emb["tipo"] or "",
+        velocidade=emb["velocidade_no"] or 0.0, bandeira="Brasil",
+        latitude=emb["latitude"], longitude=emb["longitude"],
+        rumo=emb.get("rumo") or 0.0, atualizado_em=agora,
+    )
 
 
 # ── Ciclo de vida (substitui @app.on_event("startup") deprecado) ──
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    db.inicializar_banco()   # fase 2: tabelas Usuario/Embarcacao/Rota/Partida/Tarifa
+    semear_banco()           # seed idempotente (operador demo + frota + grade)
     tarefa = asyncio.create_task(simular_movimento())
     yield
     tarefa.cancel()
@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="URUÁ-T API",
     description="Monitoramento de embarcações fluviais — Oriximiná/PA",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -87,32 +87,45 @@ app = FastAPI(
 _origens = os.environ.get("CORS_ORIGENS", "").split(",") if os.environ.get("CORS_ORIGENS") else [
     "http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:8000", "http://localhost:8000",
 ]
-app.add_middleware(CORSMiddleware, allow_origins=_origens, allow_methods=["GET", "POST"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=_origens, allow_methods=["*"], allow_headers=["*"])
+
+# Fase 2: autenticação/cadastro (auth.py) e consultas públicas de viagem (viagem.py)
+app.include_router(auth_router)
+app.include_router(viagem_router)
 
 
 # ── Simulação de movimento (lógica única em simulacao.py) ────
 async def simular_movimento():
     while True:
-        mover_todas(embarcacoes)
-        agora = datetime.now(timezone.utc)
-        for embarcacao in embarcacoes:
-            embarcacao.atualizado_em = agora
+        passo_de_simulacao()
         await asyncio.sleep(INTERVALO_ATUALIZACAO)
+
+
+def passo_de_simulacao() -> datetime:
+    """Um tick: move a frota (dicts do SQLite) e persiste posição/rumo.
+
+    Compartilhado pelo loop em background e pelo endpoint manual — a mesma
+    função é a fonte de verdade (débito técnico quitado na fase 1).
+    """
+    embarcacoes = db.listar_embarcacoes()
+    mover_todas(embarcacoes)
+    agora = datetime.now(timezone.utc)
+    for emb in embarcacoes:
+        salvar_passo(emb["id_embarcacao"], emb["latitude"], emb["longitude"], emb["rumo"])
+    return agora
 
 
 # ── Endpoints ─────────────────────────────────────────────────
 @app.get("/embarcacoes", response_model=List[Embarcacao])
 def listar_embarcacoes():
-    return embarcacoes
+    agora = datetime.now(timezone.utc)
+    return [_de_dict(e, agora) for e in db.listar_embarcacoes()]
 
 
 @app.post("/simular-movimento")
 def simular_movimento_manual():
     """Disparo manual de um passo da simulação (mesma função do loop)."""
-    mover_todas(embarcacoes)
-    agora = datetime.now(timezone.utc)
-    for embarcacao in embarcacoes:
-        embarcacao.atualizado_em = agora
+    passo_de_simulacao()
     return {"status": "Movimento simulado manualmente"}
 
 
@@ -121,25 +134,36 @@ def consultar_eta(
     embarcacao_id: int,
     destino: str = Query(..., description="Nome do destino (ex.: 'Óbidos')"),
 ):
-    """ETA em tempo real: distância Haversine × velocidade desenvolvida."""
-    emb = next((e for e in embarcacoes if e.id == embarcacao_id), None)
+    """ETA em tempo real: distância Haversine × velocidade desenvolvida.
+
+    Fase 2: as coordenadas do destino vêm da tabela Rota cadastrada pelo
+    operador; se a rota ainda não existe no banco, caímos nos portos fixos
+    da fase 1 (DESTINOS_CONHECIDOS) para não quebrar clientes antigos.
+    """
+    emb = obter(embarcacao_id)
     if emb is None:
         raise HTTPException(status_code=404, detail="Embarcação não encontrada")
 
-    coords = DESTINOS_CONHECIDOS.get(_nfc(destino))
+    rota = db.rota_por_destino(embarcacao_id, _nfc(destino))
+    if rota is not None:
+        coords = (rota["lat_destino"], rota["lon_destino"])
+    else:
+        coords = DESTINOS_CONHECIDOS.get(_nfc(destino))
     if coords is None:
+        disponiveis = [r["destino"] for r in db.rotas_da_embarcacao(embarcacao_id)] \
+            or list(DESTINOS_CONHECIDOS)
         raise HTTPException(
             status_code=404,
-            detail=f"Destino '{destino}' desconhecido. Disponíveis: {', '.join(DESTINOS_CONHECIDOS)}",
+            detail=f"Destino '{destino}' desconhecido. Disponíveis: {', '.join(disponiveis)}",
         )
 
-    distancia = calcular_distancia(emb.latitude, emb.longitude, coords[0], coords[1])
-    velocidade_kmh = emb.velocidade * 1.852  # nós -> km/h
+    distancia = calcular_distancia(emb["latitude"], emb["longitude"], coords[0], coords[1])
+    velocidade_kmh = (emb["velocidade_no"] or 0.0) * 1.852  # nós -> km/h
     eta = calcular_eta(distancia, velocidade_kmh)
 
     if eta is None:
         return EtaResposta(
-            embarcacao_id=emb.id, embarcacao_nome=emb.nome, destino=destino,
+            embarcacao_id=emb["id_embarcacao"], embarcacao_nome=emb["nome"], destino=destino,
             distancia_km=round(distancia, 2), velocidade_kmh=round(velocidade_kmh, 2),
             eta_tempo_min=None, hora_chegada_prevista=None,
             mensagem="Embarcação parada — sem previsão de chegada",
@@ -147,7 +171,7 @@ def consultar_eta(
 
     agora = datetime.now(timezone.utc)
     return EtaResposta(
-        embarcacao_id=emb.id, embarcacao_nome=emb.nome, destino=destino,
+        embarcacao_id=emb["id_embarcacao"], embarcacao_nome=emb["nome"], destino=destino,
         distancia_km=round(distancia, 2), velocidade_kmh=round(velocidade_kmh, 2),
         eta_tempo_min=eta.total_seconds() / 60,
         hora_chegada_prevista=agora + eta,

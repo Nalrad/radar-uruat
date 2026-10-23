@@ -16,8 +16,12 @@ window.API = (function () {
     consultarEta: (id, destino) =>
       getJson(`/embarcacoes/${id}/eta?destino=${encodeURIComponent(destido)}`),
 
-    // Consulta assíncrona para atualização suave dos marcadores,
-    // sem esperar o próximo tick de 5s do polling principal.
-    posicoes: () => getJson('/posicoes'),
+    // Grade pública de rotas/partidas/tarifas — passageiro não precisa de
+    // cadastro para consultar (docs §2.1, fase 2).
+    listarRotas: () => getJson('/rotas'),
+
+    // Próxima partida calculada + estado "em partida" com ETA ao vivo.
+    proximaPartida: (id, destino) =>
+      getJson(`/embarcacoes/${id}/proxima-partida?destino=${encodeURIComponent(destido)}`),
   };
 })();

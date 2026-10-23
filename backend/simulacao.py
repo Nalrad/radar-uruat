@@ -13,12 +13,20 @@ def passo_simulado(embarcacao, amplitude: float = 0.001) -> None:
 
     Também recalcula o rumo (heading, 0-360, 0 = norte) a partir do vetor
     do último deslocamento — usado pelo frontend para orientar o ícone.
+    Funciona com objetos Pydantic (fase 1) e com dicts vindos do SQLite
+    (fase 2), gravando latitude/longitude/rumo nos dois formatos.
     """
     d_lat = random.uniform(-amplitude, amplitude)
     d_lon = random.uniform(-amplitude, amplitude)
-    embarcacao.latitude += d_lat
-    embarcacao.longitude += d_lon
-    embarcacao.rumo = (math.degrees(math.atan2(d_lon, d_lat)) + 450) % 360
+    novo_rumo = (math.degrees(math.atan2(d_lon, d_lat)) + 450) % 360
+    if isinstance(embarcacao, dict):
+        embarcacao["latitude"] += d_lat
+        embarcacao["longitude"] += d_lon
+        embarcacao["rumo"] = novo_rumo
+    else:
+        embarcacao.latitude += d_lat
+        embarcacao.longitude += d_lon
+        embarcacao.rumo = novo_rumo
 
 
 def mover_todas(embarcacoes, amplitude: float = 0.001) -> None:

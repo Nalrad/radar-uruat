@@ -4,6 +4,7 @@ window.UI = (function () {
   let activeFilter = 'todos';
   let selectedId = null;
   const etaCache = {};      // id -> info do ETA (preenchida de forma assíncrona)
+  const gradeCache = {};    // destino -> rota da grade pública (partidas/tarifas)
   const ultimaAtualizacao = {}; // id -> timestamp ms do último sinal recebido
 
   // Padrão náutico: mostrar nós E km/h (docs §5.2)
@@ -29,6 +30,22 @@ window.UI = (function () {
 
   function marcarRecebido(id) { ultimaAtualizacao[id] = Date.now(); }
 
+  // Preço em centavos -> "R$ 120,00" (dinheiro nunca é float na origem — docs §4)
+  function precoFormatado(centavos) {
+    if (!Number.isFinite(centavos)) return '—';
+    return 'R$ ' + (centavos / 100).toFixed(2).replace('.', ',');
+  }
+
+  // Linha comercial do card: "Óbidos · sáb 05:30 · a partir de R$ 80,00"
+  function linhaGrade(e) {
+    const rota = gradeCache[e.destino] || Object.values(gradeCache)[0];
+    if (!rota || !rota.partidas || !rota.partidas.length) return '';
+    const p = rota.partidas[0];            // partidas já vêm ordenadas por dia/hora
+    const maisBarata = Math.min(...rota.tarifas.map(t => t.preco_centavos));
+    const txt = `${rota.destino} · ${p.dia_nome} ${p.hora}`;
+    return rota.tarifas.length ? `${txt} · a partir de ${precoFormatado(maisBarata)}` : txt;
+  }
+
   // ── CARD HTML ──────────────────────────────────────────────
   function tipoClass(tipo) { return (tipo || '').toLowerCase(); }
 
@@ -38,6 +55,7 @@ window.UI = (function () {
     const etaTxt = eta && eta.eta_tempo_min != null
       ? `ETA ~${Math.round(eta.eta_tempo_min)} min`
       : '';
+    const gradeTxt = linhaGrade(e);
     return `
       <div class="vessel-card ${tipoClass(e.tipo)} ${sel ? 'selected' : ''}"
            id="card-${e.id}" role="button" tabindex="0"
@@ -52,6 +70,7 @@ window.UI = (function () {
           <div class="vc-item">Veloc. <span>${velocidadeFormatada(e.velocidade)}</span></div>
           <div class="vc-item">${etaTxt || 'Bandeira <span>' + e.bandeira + '</span>'}</div>
         </div>
+        ${gradeTxt ? `<div class="vc-grade">${gradeTxt}</div>` : ''}
         <div class="vc-coords">${e.latitude.toFixed(5)}, ${e.longitude.toFixed(5)} · ${idadeDoSinal(e)}</div>
       </div>`;
   }
@@ -135,12 +154,21 @@ window.UI = (function () {
   }
   function getEtaCache(id) { return etaCache[id]; }
 
+  // ── GRADE PÚBLICA (fase 2: rotas/partidas/tarifas — docs §2.1) ──
+  function setGrade(rotas) {
+    for (const k of Object.keys(gradeCache)) delete gradeCache[k];
+    (rotas || []).forEach(r => { gradeCache[r.destino] = r; });
+    renderSidebar();
+  }
+  function getGrade(destino) { return gradeCache[destino]; }
+
   return {
     setEmbarcacoes(list) { embarcacoes = list; },
     getEmbarcacoes: () => embarcacoes,
     getEmbarcacao: id => embarcacoes.find(e => e.id === id),
     getSelectedId: () => selectedId,
     velocidadeFormatada,
+    precoFormatado,
     idadeDoSinal,
     sinalEnvelhecido,
     marcarRecebido,
@@ -153,5 +181,7 @@ window.UI = (function () {
     showToast,
     setEta,
     getEtaCache,
+    setGrade,
+    getGrade,
   };
 })();

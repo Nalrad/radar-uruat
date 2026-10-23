@@ -122,17 +122,72 @@ Baseadas em aplicativos consolidados de rastreamento marítimo/fluvial
 - LGPD: minimizar dados de passageiros; log de acesso; exclusão de conta.
 - Validação de entrada nas position reports (clamp de lat/lon) e CORS restrito.
 
+### 5.7 Sugestões específicas para o frontend (`frontend/`)
+
+Estado atual: single-page HTML puro em `frontend/static/index.html` usando
+**Leaflet 1.9.4 via CDN**, com CSS/JS embutidos no mesmo arquivo.
+
+**Arquitetura e organização**
+- Quebrar o `index.html` monolítico em `static/js/` (ex.: `api.js`, `mapa.js`,
+  `ui.js`) e `static/css/` — hoje toda a lógica está inline, difícil de manter e
+  sem cache eficiente entre deploys.
+- Extrair constantes (intervalo de 5s de polling, URL base da API, centro/zoom do
+  mapa) para um objeto `CONFIG` único no topo do JS.
+- Isolar o acesso à API em uma camada própria (ex.: `fetchEmbarcacoes()`,
+  `pollPositions()`), facilitando a futura troca de polling por WebSocket/SSE sem
+  reescrever a UI.
+- Quando surgirem login/cadastro e painel do operador, avaliar migração para SPA
+  com Vite (+ React ou manter vanilla com módulos ES) e rotas dedicadas:
+  mapa público, autenticação, minhas-passagens, administração de rotas/tarifas.
+
+**Mapa e UX de tempo real**
+- Manter Leaflet (leve, adequado a conexões fracas); alternativa futura: MapLibre
+  GL para tiles vetoriais. Usar `L.DivIcon`/`L.Marker` com ícone orientado pelo
+  rumo (heading) e cor por status (navegando / atracado / sem sinal).
+- Popup do marcador deve concentrar a "pergunta única" do passageiro: *onde está e
+  quando chega* — nome, destino, ETA (consumindo o endpoint sugerido em 5.2),
+  próxima partida e preço.
+- Clustering/agrupamento quando houver muitas embarcações; botão "centralizar na
+  minha embarcação favorita"; manter a viewport escolhida pelo usuário entre
+  atualizações (não fazer `setView` a cada poll).
+- Skeleton/loading inicial e estados vazios ("nenhuma embarcação neste trecho")
+  em vez de mapa em branco.
+
+**Qualidade percebida do dado**
+- Badge "SIMULADO" enquanto a telemetria não for real; carimbo "atualizado há Xs"
+  por embarcação (regra 5.3) e atenuação do ícone (fade) quando o sinal envelhecer.
+- Interpolação do ícone entre polls (requestAnimationFrame) para movimento suave.
+
+**Mobile-first e contexto ribeirinho**
+- Layout já responsivo: evoluir para PWA instalável (manifest + service worker com
+  cache da última posição conhecida — degradação graciosa offline).
+- Alvos de toque ≥ 44px, fontes legíveis sob luz solar (alto contraste), modo
+  escuro opcional; compactar payload e usar `If-None-Match`/ETag para economizar
+  dados.
+- Formulários de login/cadastro com validação no cliente espelhando a regra das
+  8+ caracteres da senha, mensagens em PT-BR simples e acessibilidade básica
+  (`aria-label` nos controles do mapa, navegação por teclado).
+
+**Engenharia**
+- Servir os assets Leaflet localmente (hoje via CDN — quebra offline e adiciona
+  latência) e fixar `integrity`/versão.
+- Linter (ESLint) e testes leves para a lógica de parse das posições; URL da API
+  em variável configurável em vez de hardcoded.
+
 ## 6. Débitos técnicos conhecidos (para o backlog)
 
-- `pytest` não está em `backend/requirements.txt` (testes existem mas não rodam
-  no ambiente limpo).
-- Lógica de movimento duplicada em `simular_movimento()` e `/simular-movimento`
-  — extrair para uma função única.
-- `@app.on_event("startup")` deprecado — migrar para `lifespan` do FastAPI.
-- `__pycache__/` commitado — adicionar ao `.gitignore`.
-- ETA isolado sem endpoint público (integração pendente).
-- API usa estado em memória; `schema.sql` existe mas não há camada de persistência
-  conectada (nem driver PostgreSQL nos requirements).
+### ✅ Quitados na fase 1 (out/2026)
+- ~~`pytest` não está em `backend/requirements.txt`.~~ → adicionado (`pytest>=8.0`).
+- ~~Lógica de movimento duplicada em `simular_movimento()` e `/simular-movimento`.~~ → extraída para `backend/simulacao.py` (`mover_todas`), agora também calcula o rumo (heading).
+- ~~`@app.on_event("startup")` deprecado.~~ → migrado para `lifespan` do FastAPI.
+- ~~`__pycache__/` commitado.~~ → removido do índice; `.gitignore` já cobre.
+- ~~ETA isolado sem endpoint público.~~ → `GET /embarcacoes/{id}/eta?destino=...` implementado, com normalização unicode (NFC) dos destinos e testes em `backend/test_api.py` (13 testes cobrindo ETA, simulação e listagem).
+- ~~Frontend monolítico.~~ → quebrado em `static/css/style.css` + `static/js/{config,api,mapa,ui,app}.js`, com camada de API isolada (troca futura p/ SSE afeta só `api.js`), interpolação suave via `requestAnimationFrame`, ícone orientado por rumo, badge "SIMULADO", carimbo "atualizado há Xs", skeleton inicial, acessibilidade (`aria-*`, foco visível, teclado) e `integrity` nos assets CDN. O backend passou a servir o frontend (`/` e `/static`).
+
+### Pendentes
+- API usa estado em memória; `schema.sql` existe mas não há camada de persistência conectada (nem driver PostgreSQL nos requirements).
+- CORS restrito via env `CORS_ORIGENS` — falta HTTPS/rate-limit em produção.
+- Servir Leaflet localmente (hoje CDN + integrity) para funcionamento offline pleno.
 
 ## 7. Roadmap sugerido
 
